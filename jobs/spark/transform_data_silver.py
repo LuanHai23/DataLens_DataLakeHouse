@@ -6,14 +6,11 @@ from pyspark.sql.functions import (
 from pyspark.sql.types import StringType, FloatType, ArrayType
 from pyspark.sql.window import Window
 import os
-from dotenv import load_dotenv
-
-load_dotenv()
 
 MINIO_CONF = {
-    "endpoint": os.getenv("MINIO_ENDPOINT"), 
-    "access_key": os.getenv("MINIO_ACCESS_KEY"),
-    "secret_key": os.getenv("MINIO_SECRET_KEY")
+    "endpoint": os.getenv("MINIO_ENDPOINT", "http://minio:9000"),
+    "access_key": os.getenv("MINIO_ACCESS_KEY", "minio_admin"),
+    "secret_key": os.getenv("MINIO_SECRET_KEY", "minio_password")
 }
 
 SOURCE_PATH  = "s3a://warehouse/bronze/jobs/"

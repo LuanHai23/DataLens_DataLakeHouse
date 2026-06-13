@@ -2,17 +2,17 @@ import discord
 from discord.ext import commands
 import os
 from trino.dbapi import connect
+from dotenv import load_dotenv
 
-# ---------------------------------------------------------------------------
-# CẤU HÌNH
-# ---------------------------------------------------------------------------
+load_dotenv()
+
 DISCORD_TOKEN     = os.environ.get("DISCORD_TOKEN")
-TRINO_HOST        = "trino"
-TRINO_PORT        = 8080
-TRINO_USER        = "admin"
-TRINO_HTTP_SCHEME = "http"
-TRINO_CATALOG     = "demo"
-TRINO_SCHEMA      = "gold"
+TRINO_HOST        = os.environ.get("TRINO_HOST")
+TRINO_PORT        = int(os.environ.get("TRINO_PORT"))
+TRINO_USER        = os.environ.get("TRINO_USER")
+TRINO_HTTP_SCHEME = os.environ.get("TRINO_HTTP_SCHEME")
+TRINO_CATALOG     = os.environ.get("TRINO_CATALOG")
+TRINO_SCHEMA      = os.environ.get("TRINO_SCHEMA")
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -21,7 +21,7 @@ bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
 
 def query_trino(sql: str) -> list[dict] | None:
     try:
-        print(f"🔌 Connecting to Trino at {TRINO_HOST}:{TRINO_PORT}")
+        print(f"Connecting to Trino at {TRINO_HOST}:{TRINO_PORT}")
         conn = connect(
             host=TRINO_HOST, port=TRINO_PORT, user=TRINO_USER,
             catalog=TRINO_CATALOG, schema=TRINO_SCHEMA, http_scheme=TRINO_HTTP_SCHEME,
@@ -31,16 +31,14 @@ def query_trino(sql: str) -> list[dict] | None:
         rows    = cur.fetchall()
         columns = [desc[0] for desc in cur.description]
         cur.close(); conn.close()
-        print(f"✅ Query returned {len(rows)} rows")
+        print(f"Query returned {len(rows)} rows")
         return [dict(zip(columns, row)) for row in rows]
     except Exception as e:
-        print(f"❌ Trino query failed: {e}")
+        print(f"Trino query failed: {e}")
         return None
 
 
-# ---------------------------------------------------------------------------
-# HELPER: tạo embed card giống ITviec UI
-# ---------------------------------------------------------------------------
+
 KEYWORD_COLORS = {
     "data-engineer":  0xE53935,
     "data-analyst":   0x1E88E5,
@@ -54,7 +52,7 @@ def make_job_embed(row: dict) -> discord.Embed:
 
     embed = discord.Embed(
         title = row.get("title", "N/A"),
-        url   = row.get("url", ""),
+        url = row.get("url", ""),
         color = color,
     )
 
@@ -170,22 +168,22 @@ async def daily_report(ctx):
 
     msg = "**📊 BÁO CÁO THỊ TRƯỜNG IT MỚI NHẤT**\n" + "=" * 40 + "\n\n"
     for row in data:
-        location   = row.get("location_std", "Unknown")
-        currency   = row.get("currency", "VND")
+        location = row.get("location_std", "Unknown")
+        currency = row.get("currency", "VND")
         total_jobs = row.get("total_jobs", 0)
-        avg_min    = float(row["avg_min_salary"]) if row.get("avg_min_salary") else 0
-        avg_max    = float(row["avg_max_salary"]) if row.get("avg_max_salary") else 0
+        avg_min = float(row["avg_min_salary"]) if row.get("avg_min_salary") else 0
+        avg_max = float(row["avg_max_salary"]) if row.get("avg_max_salary") else 0
         icon = "🏙️" if "Ho Chi Minh" in location else "🏯" if "Ha Noi" in location else "📍"
         msg += f"{icon} **{location}** ({currency})\n"
-        msg += f"   • Số job tuyển: **{total_jobs}**\n"
-        msg += f"   • Lương TB (Min): **{avg_min:,.0f}**\n"
-        msg += f"   • Lương TB (Max): **{avg_max:,.0f}**\n\n"
+        msg += f" • Số job tuyển: **{total_jobs}**\n"
+        msg += f" • Lương TB (Min): **{avg_min:,.0f}**\n"
+        msg += f" • Lương TB (Max): **{avg_max:,.0f}**\n\n"
     await ctx.send(msg)
 
 
 @bot.command(name="alert")
 async def high_salary_alert(ctx):
-    await ctx.send("🤑 Đang check hàng VIP...")
+    await ctx.send("🤑 Đang check hàng VIP")
     query = """
         SELECT title, min_salary, max_salary, currency, source, url, location_std
         FROM demo.gold.daily_alerts
@@ -195,7 +193,7 @@ async def high_salary_alert(ctx):
     """
     data = query_trino(query)
     if not data:
-        await ctx.send("😔 Hôm nay móm, không có kèo nào thơm cả.")
+        await ctx.send("😔 Hôm nay móm, không có kèo nào thơm cả")
         return
 
     embeds = []
@@ -216,7 +214,7 @@ async def high_salary_alert(ctx):
 
 @bot.command(name="sources")
 async def source_stats(ctx):
-    await ctx.send("📊 Đang đếm số lượng job theo nguồn...")
+    await ctx.send("📊 Đang đếm số lượng job theo nguồn")
     query = """
         SELECT source, jobs_count
         FROM demo.gold.source_stats
@@ -235,9 +233,8 @@ async def source_stats(ctx):
 
 @bot.command(name="ping")
 async def ping(ctx):
-    """!ping — Kiểm tra bot + Trino còn sống không"""
     await ctx.send("🏓 Pong! Bot còn sống.")
-    
+
     # Test Trino
     data = query_trino("SELECT 1")
     if data is None:
@@ -264,17 +261,16 @@ async def ping(ctx):
 @bot.command(name="help")
 async def help_command(ctx):
     msg = """
-**🤖 Job Hunter Bot (Lakehouse Edition)**
+    **🤖 Job Hunter Bot (Lakehouse Edition)**
 
-`!job_de [n]`        — Top N job Data Engineer mới nhất (default: 5)
-`!jobs [keyword] [n]` — Tìm job theo keyword (data-analyst, big-data...)
-`!report`            — Báo cáo thị trường chung (lương TB theo khu vực)
-`!alert`             — Top 5 job lương khởi điểm cao nhất
-`!sources`           — Thống kê lượng job theo nguồn crawl
-`!help`              — Hiện danh sách lệnh
+    `!job_de [n]`        — Top N job Data Engineer mới nhất (default: 5)
+    `!jobs [keyword] [n]` — Tìm job theo keyword (data-analyst, big-data...)
+    `!report`            — Báo cáo thị trường chung (lương TB theo khu vực)
+    `!alert`             — Top 5 job lương khởi điểm cao nhất
+    `!sources`           — Thống kê lượng job theo nguồn crawl
+    `!help`              — Hiện danh sách lệnh
     """.strip()
     await ctx.send(msg)
-
 
 if __name__ == "__main__":
     print("🚀 Đang khởi động Bot...")

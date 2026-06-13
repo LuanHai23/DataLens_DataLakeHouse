@@ -5,14 +5,11 @@ from pyspark.sql.functions import (
     col, input_file_name, current_timestamp, lit, explode, to_json
 )
 import great_expectations as gx
-from dotenv import load_dotenv
-
-load_dotenv()
 
 MINIO_CONF = {
-    "endpoint": os.getenv("MINIO_ENDPOINT"), 
-    "access_key": os.getenv("MINIO_ACCESS_KEY"),
-    "secret_key": os.getenv("MINIO_SECRET_KEY")
+    "endpoint": os.getenv("MINIO_ENDPOINT", "http://minio:9000"),
+    "access_key": os.getenv("MINIO_ACCESS_KEY", "minio_admin"),
+    "secret_key": os.getenv("MINIO_SECRET_KEY", "minio_password")
 }
 
 INPUT_PATH  = "s3a://data-lake/*/*/*.json"

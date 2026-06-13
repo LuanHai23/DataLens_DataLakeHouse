@@ -1,7 +1,6 @@
 logs/
 __pycache__/
 *.pyc
-jobs/crawlers/
 .env
 airflow.db
 *.jar
@@ -9,7 +8,8 @@ hive/*.xml
 hive/*.jar
 *.json
 .env.*
-cookies.json
-jobs/crawlers/json_cookies/itviec_cookies.json
-jobs/crawlers/json_cookies/topcv_cookies.json
 
+.pytest_cache/
+jobs/crawlers/json_cookies/
+*.cookies.json
+*_cookies*.json
