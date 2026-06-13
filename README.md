@@ -237,7 +237,7 @@ This design separates:
 The Metabase dashboard provides a business-facing view of Vietnam IT job market analytics.
 
 ![Metabase Dashboard](./images/Dashboard_1.png)
-![Metabase Dashboard](./images/Dashboard_2.png)
+![Metabase Dashboard](./images/dashboard_2.png)
 ### Current Sample Run
 
 Latest successful pipeline output:
