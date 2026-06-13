@@ -57,21 +57,29 @@ The project answers business questions such as:
 
 ```text
 ITviec / TopCV
-      ↓
+      |
+      V
 Python Crawlers
-      ↓
+      |
+      V
 MinIO Bronze Layer
-      ↓
+      |
+      V
 Great Expectations Validation
-      ↓
+      |
+      V
 Spark Silver Transformation
-      ↓
+      |
+      V
 Spark Gold Aggregation
-      ↓
+      |
+      V
 Apache Iceberg Gold Tables on MinIO
-      ↓
+      |
+      V
 Trino Query Engine
-      ↓
+      |
+      V
 Discord Alerts
 ```
 
@@ -79,9 +87,11 @@ For dashboard serving:
 
 ```text
 Gold Analytics Marts
-      ↓
+      |
+      V
 PostgreSQL Serving Layer
-      ↓
+      |
+      V
 Metabase BI Dashboard
 ```
 
