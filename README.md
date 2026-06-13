@@ -51,7 +51,7 @@ The project answers business questions such as:
 
 ## 🏗️ Architecture
 
-![Data Lakehouse Architecture](./images/Architecture.png)
+![Data Lakehouse Architecture](./images/DataLens_Data_LakeHouse_Architecture.png)
 
 ### Data Flow
 
