@@ -639,7 +639,7 @@ This project is a milestone in my journey toward becoming a **Data Engineer**. B
 
 I am currently open to **Fresher Data Engineer** and **Data Engineer Intern** opportunities.
 
-* 💼 **LinkedIn:** [https://www.linkedin.com/in/h%E1%BA%A3i-lu%C3%A2n-nguy%E1%BB%85n-ng%E1%BB%8Dc-67098531a/](https://www.linkedin.com/in/nguyen-ngoc-hai-luan-67098531a/)
+* 💼 **LinkedIn:** [nguyen ngoc hai luan](https://www.linkedin.com/in/nguyen-ngoc-hai-luan-67098531a/)
 * 📧 **Email:** [nguyenngochailuan16112003@gmail.com](mailto:nguyenngochailuan16112003@gmail.com)
 
 ---
