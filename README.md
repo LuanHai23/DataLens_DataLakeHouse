@@ -571,15 +571,11 @@ Vietnam IT Job Market Analytics
 
 ### Metabase Dashboard
 
-![Metabase Dashboard](./images/Metabase_dashboard.png)
+![Metabase Dashboard](./images/Dashboard_1.png)
 
 ### ITviec Jobs Dashboard
 
-![ITviec Jobs](./images/Metabase_job_itviec.png)
-
-### Additional Dashboard View
-
-![Metabase](./images/Metabase.png)
+![Metabase Dashboard](./images/dashboard_2.png)
 
 ---
 
