@@ -19,12 +19,12 @@ class JobHunterCrawler_TOPCV:
         try:
             self.minio = MiniOIngestion()
         except Exception as e:
-            print(f"⚠️  MinIO init failed: {e}")
-            print("   Crawler vẫn chạy, chỉ skip upload MinIO.")
+            print(f"⚠️ MinIO init failed: {e}")
+            print("Crawler vẫn chạy")
             self.minio = None
 
     def _start_virtual_display(self):
-        print("🖥️  Starting virtual display (Xvfb)...")
+        print("🖥️ Starting virtual display (Xvfb)...")
         self.xvfb = subprocess.Popen(
             ["Xvfb", ":99", "-screen", "0", "1920x1080x24"],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
@@ -103,14 +103,14 @@ class JobHunterCrawler_TOPCV:
                 if loc_el.count() > 0:
                     location = loc_el.inner_text().strip()
 
-                # Tags — <div class="tag"><a class="item-tag">
+                # Tags <div class="tag"><a class="item-tag">
                 tags = []
                 for tag_el in card.locator("div.tag a.item-tag").all():
                     t = tag_el.inner_text().strip()
                     if t and t not in tags:
                         tags.append(t)
 
-                # Posted — <label class="address mobile-hidden label-update">
+                # Posted <label class="address mobile-hidden label-update">
                 posted = ""
                 posted_el = card.locator("label.address.mobile-hidden.label-update").first
                 if posted_el.count() > 0:
@@ -131,7 +131,7 @@ class JobHunterCrawler_TOPCV:
                     "crawled_at": str(datetime.now()),
                 })
             except Exception as e:
-                print(f"   ⚠️  {e}")
+                print(f"⚠️ {e}")
                 continue
 
         print(f"Tổng số job có được: {len(jobs)}")
@@ -141,9 +141,9 @@ class JobHunterCrawler_TOPCV:
                 print(f"Đang upload {len(jobs)} jobs lên MinIO...")
                 self.minio.upload_jobs("topcv", jobs)
             else:
-                print("⚠️  Skip MinIO upload — chỉ lưu local vì MinIO chưa connect được.")
+                print("⚠️ Skip MinIO upload — MinIO chưa khởi tạo.")
         else:
-            print("List job rỗng! Code crawl có vấn đề rồi.")
+            print("List job rỗng! Code crawl đang lỗi.")
 
     def run_topcv(self):
         self._start_virtual_display()
@@ -172,7 +172,7 @@ class JobHunterCrawler_TOPCV:
                     context.add_cookies(cookies)
                     print(f"🍪 Loaded {len(cookies)} TopCV cookies")
                 else:
-                    print("⚠️  No TopCV cookies — salary may be hidden!")
+                    print("⚠️ No TopCV cookies — salary may be hidden!")
 
                 page = context.new_page()
                 stealth_sync(page)

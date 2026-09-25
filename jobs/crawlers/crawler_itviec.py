@@ -1,29 +1,22 @@
 import json
-import os
-
 import re
 import time
 import random
-import re
 from pathlib import Path
 from datetime import datetime
 from camoufox.sync_api import Camoufox
 from dotenv import load_dotenv
+from s3_ingestion import MiniOIngestion
 
 load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent
 KEYWORDS     = ["data-engineer", "data-science", "big-data", "data analyst"]
-MAX_PAGES    = 5
+MAX_PAGES    = 10
 OUTPUT       = "itviec_jobs.json"
 MINIO_PATH   = "s3a://data-lake/itviec/{date}/itviec_jobs.json"
-BASE_DIR = Path(__file__).resolve().parent
-COOKIES_FILE = BASE_DIR / "json_cookies" / "itviec_cookies_playwright.json"
+COOKIES_FILE = BASE_DIR / "json_cookies" / "itviec_cookies_playwright_v1.json"
 DEBUG_CARD   = False
-
-MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT")
-MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY")
-MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY")
 
 def jitter(a=2.0, b=5.0):
     time.sleep(random.uniform(a, b))
@@ -216,31 +209,10 @@ def main():
 
     # Upload lên MinIO để Bronze layer đọc được
     try:
-        import boto3
-        from botocore.client import Config
         from datetime import date
 
-        s3 = boto3.client(
-            "s3",
-            endpoint_url=MINIO_ENDPOINT,
-            aws_access_key_id=MINIO_ACCESS_KEY,
-            aws_secret_access_key=MINIO_SECRET_KEY,
-            config=Config(
-                signature_version="s3v4",
-                s3={"addressing_style": "path"},
-            ),
-        )
-        bucket  = "data-lake"
-        key     = f"itviec/{date.today().isoformat()}/itviec_jobs.json"
-
-        # Tạo bucket nếu chưa có
-        try:
-            s3.head_bucket(Bucket=bucket)
-        except:
-            s3.create_bucket(Bucket=bucket)
-
-        s3.upload_file(OUTPUT, bucket, key)
-        print(f"Uploaded → s3://{bucket}/{key}")
+        key = f"itviec/{date.today().isoformat()}/itviec_jobs.json"
+        MiniOIngestion().upload_file(OUTPUT, key)
     except Exception as e:
         print(f"MinIO upload failed: {e} — file vẫn được lưu local")
 

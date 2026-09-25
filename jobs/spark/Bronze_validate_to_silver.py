@@ -46,8 +46,7 @@ def flatten_json(df):
       - Nested: {source, jobs: [{title, url, ...}]}     → giữ source rồi explode
     """
     if "jobs" in df.columns:
-        print("   📦 Detected nested JSON (itviec format) — exploding 'jobs' array...")
-        # Giữ lại source từ top-level trước khi explode
+        print("📦 Detected nested JSON (itviec format) — exploding 'jobs' array...")
         df = df.select(
             col("source"),                          # top-level source
             explode(col("jobs")).alias("job")
@@ -56,7 +55,7 @@ def flatten_json(df):
             col("job.*")                            # tất cả fields trong job object
         )
     else:
-        print("   📦 Detected flat JSON format")
+        print("📦 Detected flat JSON format")
 
     # tags là array → convert sang string JSON
     if "tags" in df.columns:

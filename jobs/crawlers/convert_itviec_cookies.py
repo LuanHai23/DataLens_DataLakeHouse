@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 RAW_COOKIE_PATH = Path("C:/Users/PC (newgear)/Desktop/VNJobs_API_DataLakeHouse/jobs/crawlers/json_cookies/itviec_cookies.json")
-OUTPUT_COOKIE_PATH = Path("C:/Users/PC (newgear)/Desktop/VNJobs_API_DataLakeHouse/jobs/crawlers/json_cookies/itviec_cookies_playwright.json")
+OUTPUT_COOKIE_PATH = Path("C:/Users/PC (newgear)/Desktop/VNJobs_API_DataLakeHouse/jobs/crawlers/json_cookies/itviec_cookies_playwright_v1.json")
 
 
 def normalize_same_site(value):
