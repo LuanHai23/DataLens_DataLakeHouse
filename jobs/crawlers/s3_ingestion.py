@@ -1,8 +1,7 @@
-from minio import Minio
 import json
 import io
 import time
-from datetime import datetime
+from datetime import date, datetime
 from dotenv import load_dotenv
 import os
 from pathlib import Path
@@ -54,6 +53,14 @@ MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "minio_password")
 MINIO_BUCKET = os.getenv("MINIO_BUCKET", "data-lake")
 
 
+def _resolve_batch_date(value=None):
+    raw_value = value or os.getenv("BATCH_DATE") or date.today().isoformat()
+    try:
+        return date.fromisoformat(str(raw_value).strip()).isoformat()
+    except ValueError as exc:
+        raise ValueError("BATCH_DATE must use YYYY-MM-DD") from exc
+
+
 class MiniOIngestion:
     def __init__(
         self,
@@ -62,16 +69,54 @@ class MiniOIngestion:
         secret_key=None,
         bucket_name=None,
         secure=None,
+        backend=None,
+        region=None,
+        raw_prefix=None,
+        client=None,
     ):
+        self.backend = (backend or os.getenv("STORAGE_BACKEND", "minio")).strip().lower()
+        if self.backend not in {"minio", "s3"}:
+            raise ValueError("STORAGE_BACKEND must be 'minio' or 's3'")
+
+        if self.backend == "s3":
+            self.bucket_name = (
+                bucket_name
+                or os.getenv("S3_BUCKET")
+                or os.getenv("BRONZE_BUCKET")
+                or ""
+            ).strip()
+            if not self.bucket_name:
+                raise ValueError("S3_BUCKET or BRONZE_BUCKET is required for S3 storage")
+
+            self.raw_prefix = (raw_prefix or os.getenv("S3_RAW_PREFIX", "raw")).strip("/")
+            if client is None:
+                import boto3
+
+                client = boto3.client(
+                    "s3",
+                    region_name=(
+                        region
+                        or os.getenv("AWS_REGION")
+                        or os.getenv("AWS_DEFAULT_REGION")
+                        or "ap-southeast-1"
+                    ),
+                )
+            self.client = client
+            return
+
         endpoint, secure = _normalize_endpoint(endpoint or MINIO_ENDPOINT, secure)
         self.endpoint = endpoint
         self.secure = secure
-        self.client = Minio(
-            endpoint,
-            access_key=access_key or MINIO_ACCESS_KEY,
-            secret_key=secret_key or MINIO_SECRET_KEY,
-            secure=secure,
-        )
+        if client is None:
+            from minio import Minio
+
+            client = Minio(
+                endpoint,
+                access_key=access_key or MINIO_ACCESS_KEY,
+                secret_key=secret_key or MINIO_SECRET_KEY,
+                secure=secure,
+            )
+        self.client = client
         self.bucket_name = bucket_name or MINIO_BUCKET
         self._ensure_bucket()
 
@@ -104,20 +149,40 @@ class MiniOIngestion:
                 time.sleep(delay_seconds)
 
     def upload_file(self, local_path, object_name, content_type="application/json"):
-        self.client.fput_object(
-            self.bucket_name,
-            object_name,
-            str(local_path),
-            content_type=content_type,
-        )
+        if self.backend == "s3":
+            self.client.upload_file(
+                str(local_path),
+                self.bucket_name,
+                object_name,
+                ExtraArgs={"ContentType": content_type},
+            )
+        else:
+            self.client.fput_object(
+                self.bucket_name,
+                object_name,
+                str(local_path),
+                content_type=content_type,
+            )
         print(f"Uploaded → s3://{self.bucket_name}/{object_name}")
+        return object_name
 
-    def upload_jobs(self, source, jobs_list):
+    def upload_jobs(self, source, jobs_list, batch_date=None):
+        if not jobs_list:
+            raise ValueError(f"{source} crawler returned no jobs")
+
+        batch_date = _resolve_batch_date(batch_date)
         now = datetime.now()
-        object_name = f"{source}/{now.strftime('%Y-%m-%d')}/{now.strftime('%H-%M-%S')}.json"
+        if self.backend == "s3":
+            object_name = (
+                f"{self.raw_prefix}/source={source}/"
+                f"batch_date={batch_date}/{source}_jobs.json"
+            )
+        else:
+            object_name = f"{source}/{batch_date}/{source}_jobs.json"
 
         payload = {
             "source": source,
+            "batch_date": batch_date,
             "scraped_at": now.isoformat(),
             "total": len(jobs_list),
             "jobs": jobs_list,
@@ -126,7 +191,14 @@ class MiniOIngestion:
         data_bytes  = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         data_stream = io.BytesIO(data_bytes)
 
-        try:
+        if self.backend == "s3":
+            self.client.put_object(
+                Bucket=self.bucket_name,
+                Key=object_name,
+                Body=data_bytes,
+                ContentType="application/json",
+            )
+        else:
             self.client.put_object(
                 self.bucket_name,
                 object_name,
@@ -134,8 +206,6 @@ class MiniOIngestion:
                 length=len(data_bytes),
                 content_type="application/json"
             )
-            print(f"☁️  Uploaded {len(jobs_list)} records → {self.bucket_name}/{object_name}")
-            return True
-        except Exception as e:
-            print(f"❌ Failed to upload: {e}")
-            return False
+
+        print(f"☁️  Uploaded {len(jobs_list)} records → {self.bucket_name}/{object_name}")
+        return object_name

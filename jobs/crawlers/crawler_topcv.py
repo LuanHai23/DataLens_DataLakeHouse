@@ -15,13 +15,7 @@ COOKIES_FILE = BASE_DIR / "json_cookies" / "topcv_cookies_playwright_v1.json"
 class JobHunterCrawler_TOPCV:
     def __init__(self):
         self.xvfb = None
-
-        try:
-            self.minio = MiniOIngestion()
-        except Exception as e:
-            print(f"⚠️ MinIO init failed: {e}")
-            print("Crawler vẫn chạy")
-            self.minio = None
+        self.minio = MiniOIngestion()
 
     def _start_virtual_display(self):
         print("🖥️ Starting virtual display (Xvfb)...")
@@ -136,14 +130,11 @@ class JobHunterCrawler_TOPCV:
 
         print(f"Tổng số job có được: {len(jobs)}")
 
-        if jobs:
-            if self.minio:
-                print(f"Đang upload {len(jobs)} jobs lên MinIO...")
-                self.minio.upload_jobs("topcv", jobs)
-            else:
-                print("⚠️ Skip MinIO upload — MinIO chưa khởi tạo.")
-        else:
-            print("List job rỗng! Code crawl đang lỗi.")
+        if not jobs:
+            raise RuntimeError("TOPCV_EMPTY_RESULT: no jobs parsed; nothing uploaded")
+
+        print(f"Đang upload {len(jobs)} jobs lên object storage...")
+        self.minio.upload_jobs("topcv", jobs)
 
     def run_topcv(self):
         self._start_virtual_display()
@@ -184,6 +175,7 @@ class JobHunterCrawler_TOPCV:
 
             except Exception as e:
                 print(f"❌ Lỗi crawl TopCV: {e}")
+                raise
             finally:
                 self._stop_virtual_display()
 

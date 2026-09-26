@@ -207,14 +207,12 @@ def main():
         json.dump(output, f, ensure_ascii=False, indent=2)
     print(f"💾 Saved local → {OUTPUT}")
 
-    # Upload lên MinIO để Bronze layer đọc được
+    # Upload to local MinIO or the AWS Bronze bucket.
     try:
-        from datetime import date
-
-        key = f"itviec/{date.today().isoformat()}/itviec_jobs.json"
-        MiniOIngestion().upload_file(OUTPUT, key)
+        MiniOIngestion().upload_jobs("itviec", unique)
     except Exception as e:
-        print(f"MinIO upload failed: {e} — file vẫn được lưu local")
+        print(f"Object storage upload failed: {e} — file vẫn được lưu local")
+        raise
 
     if unique:
         print("\nSample (job đầu tiên)")
