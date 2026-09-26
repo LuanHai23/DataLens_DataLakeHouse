@@ -1,0 +1,6 @@
+boto3==1.43.26
+camoufox[geoip]==0.4.11
+minio==7.2.20
+playwright==1.58.0
+playwright-stealth==1.0.6
+python-dotenv==1.2.2
