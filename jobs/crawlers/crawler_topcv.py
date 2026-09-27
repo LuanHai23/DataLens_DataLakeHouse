@@ -47,36 +47,14 @@ class JobHunterCrawler_TOPCV:
         
         self._get_page_content(page)
 
-
         try:
             page.wait_for_selector(".job-list-search-result", timeout=10000)
         except:
             print(" Không thấy list job TopCV")
-
-        try:
-            list_count = page.locator(".job-list-search-result").count()
-            card_count = page.locator("div.job-item-search-result").count()
-            link_count = page.locator('a[href*="/viec-lam/"]').count()
-
-            body_text = page.locator("body").inner_text(timeout=5000)
-            body_sample = " ".join(body_text.split())[:500]
-
-            print(f"TOPCV_FINAL_URL={page.url}")
-            print(f"TOPCV_TITLE={page.title()}")
-            print(
-                "TOPCV_SELECTOR_COUNTS="
-                f"list:{list_count},cards:{card_count},job_links:{link_count}"
-            )
-            print(f"TOPCV_BODY_SAMPLE={body_sample}")
-        except Exception as diagnostic_error:
-            print(
-                "TOPCV_DIAGNOSTIC_FAILED="
-                f"{type(diagnostic_error).__name__}: {diagnostic_error}"
-            )
         job_cards = page.locator("div.job-item-search-result").all()
         print(f"Tìm thấy {len(job_cards)} jobs TopCV")
 
-        # Debug: in HTML card đầu tiên
+        # Debug: in HTML card đầu tiêns
         if job_cards:
             print("=" * 60)
             print("DEBUG innerHTML card[0]:")
