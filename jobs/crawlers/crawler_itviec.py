@@ -5,6 +5,7 @@ import random
 from pathlib import Path
 from datetime import datetime
 from camoufox.sync_api import Camoufox
+from cookie_loader import env_flag, load_playwright_cookies
 from dotenv import load_dotenv
 from s3_ingestion import MiniOIngestion
 
@@ -159,17 +160,24 @@ def main():
     with Camoufox(headless=True, geoip=True, locale=["vi-VN", "en-US"], os="windows") as browser:
         page = browser.new_page()
 
-        # Load cookies trước khi goto bất kỳ trang 
-        if COOKIES_FILE.exists():
-            cookies = json.loads(COOKIES_FILE.read_text())
-            # Camoufox dùng page.context
+        # Load cookies before the first request. ECS uses Secrets Manager via
+        # an environment binding; local development keeps the file fallback.
+        cookies, cookie_source = load_playwright_cookies(
+            "ITVIEC_COOKIES_JSON",
+            COOKIES_FILE,
+            required=env_flag("ITVIEC_COOKIES_REQUIRED", False),
+        )
+        if cookies:
             try:
                 page.context.add_cookies(cookies)
-                print(f"Loaded {len(cookies)} cookies từ {COOKIES_FILE}")
-            except Exception as e:
-                print(f"Lỗi load cookies: {e}")
+                print(
+                    f"Loaded {len(cookies)} ITviec cookies "
+                    f"from {cookie_source}"
+                )
+            except Exception:
+                raise RuntimeError("ITVIEC_COOKIE_APPLY_FAILED") from None
         else:
-            print(f"Không có {COOKIES_FILE} — salary sẽ bị ẩn")
+            print("Không có ITviec cookies — salary sẽ bị ẩn")
 
         print("Warm-up homepage")
         page.goto("https://itviec.com", wait_until="domcontentloaded", timeout=30_000)

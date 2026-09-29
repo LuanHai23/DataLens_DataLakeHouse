@@ -5,8 +5,8 @@ import subprocess
 import os
 from datetime import datetime
 from base_crawler import BaseCrawler
+from cookie_loader import env_flag, load_playwright_cookies
 from s3_ingestion import MiniOIngestion
-import json
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -154,15 +154,22 @@ class JobHunterCrawler_TOPCV:
                     locale="vi-VN",
                 )
 
-                cookies_path = COOKIES_FILE
-
-                if os.path.exists(cookies_path):
-                    with open(cookies_path) as f:
-                        cookies = json.load(f)
-                    context.add_cookies(cookies)
-                    print(f"🍪 Loaded {len(cookies)} TopCV cookies")
+                cookies, cookie_source = load_playwright_cookies(
+                    "TOPCV_COOKIES_JSON",
+                    COOKIES_FILE,
+                    required=env_flag("TOPCV_COOKIES_REQUIRED", False),
+                )
+                if cookies:
+                    try:
+                        context.add_cookies(cookies)
+                    except Exception:
+                        raise RuntimeError("TOPCV_COOKIE_APPLY_FAILED") from None
+                    print(
+                        f"🍪 Loaded {len(cookies)} TopCV cookies "
+                        f"from {cookie_source}"
+                    )
                 else:
-                    print("⚠️ No TopCV cookies — salary may be hidden!")
+                    print("⚠️ No TopCV cookies configured — crawl may be blocked!")
 
                 page = context.new_page()
                 stealth_sync(page)
