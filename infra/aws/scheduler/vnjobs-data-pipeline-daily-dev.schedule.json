@@ -1,0 +1,21 @@
+{
+    "Name":  "vnjobs-data-pipeline-daily-dev",
+    "GroupName":  "vnjobs-data-pipeline-dev",
+    "Description":  "Runs the VNJobs data pipeline daily at 08:00 Asia/Ho_Chi_Minh.",
+    "ScheduleExpression":  "cron(0 8 * * ? *)",
+    "ScheduleExpressionTimezone":  "Asia/Ho_Chi_Minh",
+    "FlexibleTimeWindow":  {
+                               "Mode":  "OFF"
+                           },
+    "State":  "DISABLED",
+    "ActionAfterCompletion":  "NONE",
+    "Target":  {
+                   "Arn":  "arn:aws:states:ap-southeast-1:490258149044:stateMachine:vnjobs-data-pipeline-dev",
+                   "RoleArn":  "arn:aws:iam::490258149044:role/vnjobs-eventbridge-scheduler-role-dev",
+                   "Input":  "{\"scheduled_time\":\"<aws.scheduler.scheduled-time>\",\"scheduler_execution_id\":\"<aws.scheduler.execution-id>\"}",
+                   "RetryPolicy":  {
+                                       "MaximumEventAgeInSeconds":  3600,
+                                       "MaximumRetryAttempts":  2
+                                   }
+               }
+}

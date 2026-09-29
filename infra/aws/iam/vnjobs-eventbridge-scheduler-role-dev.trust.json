@@ -1,0 +1,19 @@
+{
+    "Version":  "2012-10-17",
+    "Statement":  [
+                      {
+                          "Sid":  "AllowEventBridgeSchedulerAssumeRole",
+                          "Effect":  "Allow",
+                          "Principal":  {
+                                            "Service":  "scheduler.amazonaws.com"
+                                        },
+                          "Action":  "sts:AssumeRole",
+                          "Condition":  {
+                                            "StringEquals":  {
+                                                                 "aws:SourceAccount":  "490258149044",
+                                                                 "aws:SourceArn":  "arn:aws:scheduler:ap-southeast-1:490258149044:schedule-group/vnjobs-data-pipeline-dev"
+                                                             }
+                                        }
+                      }
+                  ]
+}
