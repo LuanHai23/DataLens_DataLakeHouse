@@ -2,8 +2,58 @@
     "Comment": "VNJobs AWS data pipeline with Glue orchestration, catalog refresh and SNS alerts",
     "QueryLanguage": "JSONPath",
     "TimeoutSeconds": 3600,
-    "StartAt": "Validate Input",
+    "StartAt": "Resolve Batch Date",
     "States": {
+        "Resolve Batch Date": {
+            "Type": "Choice",
+            "Choices": [
+                {
+                    "And": [
+                        {
+                            "Variable": "$.batch_date",
+                            "IsPresent": true
+                        },
+                        {
+                            "Variable": "$.batch_date",
+                            "IsString": true
+                        }
+                    ],
+                    "Next": "Validate Input"
+                },
+                {
+                    "And": [
+                        {
+                            "Variable": "$.scheduled_time",
+                            "IsPresent": true
+                        },
+                        {
+                            "Variable": "$.scheduled_time",
+                            "IsString": true
+                        },
+                        {
+                            "Variable": "$.scheduler_execution_id",
+                            "IsPresent": true
+                        },
+                        {
+                            "Variable": "$.scheduler_execution_id",
+                            "IsString": true
+                        }
+                    ],
+                    "Next": "Derive Scheduled Batch Date"
+                }
+            ],
+            "Default": "Invalid Input"
+        },
+        "Derive Scheduled Batch Date": {
+            "Type": "Pass",
+            "Parameters": {
+                "batch_date.$": "States.ArrayGetItem(States.StringSplit($.scheduled_time, 'T'), 0)",
+                "trigger": "eventbridge-scheduler",
+                "scheduled_time.$": "$.scheduled_time",
+                "scheduler_execution_id.$": "$.scheduler_execution_id"
+            },
+            "Next": "Validate Input"
+        },
         "Validate Input": {
             "Type": "Choice",
             "Choices": [
