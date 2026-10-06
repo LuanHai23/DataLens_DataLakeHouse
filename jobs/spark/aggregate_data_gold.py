@@ -34,7 +34,7 @@ POSTGRES_CONF = {
     "port": os.getenv("SERVING_POSTGRES_PORT", os.getenv("MB_DB_PORT", "5432")),
     "database": os.getenv("SERVING_POSTGRES_DB", os.getenv("MB_DB_DBNAME", "warehouse_db")),
     "user": os.getenv("SERVING_POSTGRES_USER", os.getenv("MB_DB_USER", os.getenv("POSTGRES_USER", "admin"))),
-    "password": os.getenv("SERVING_POSTGRES_PASSWORD", os.getenv("MB_DB_PASS", os.getenv("POSTGRES_PASSWORD", "adminpassword"))),
+    "password": os.getenv("SERVING_POSTGRES_PASSWORD", os.getenv("MB_DB_PASS", os.getenv("POSTGRES_PASSWORD", "password"))),
     "schema": os.getenv("SERVING_POSTGRES_SCHEMA", "analytics"),
 }
 

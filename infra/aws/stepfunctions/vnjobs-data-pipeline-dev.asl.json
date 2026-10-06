@@ -1,0 +1,342 @@
+{
+    "Comment": "VNJobs AWS data pipeline with Glue orchestration, catalog refresh and SNS alerts",
+    "QueryLanguage": "JSONPath",
+    "TimeoutSeconds": 3600,
+    "StartAt": "Resolve Batch Date",
+    "States": {
+        "Resolve Batch Date": {
+            "Type": "Choice",
+            "Choices": [
+                {
+                    "And": [
+                        {
+                            "Variable": "$.batch_date",
+                            "IsPresent": true
+                        },
+                        {
+                            "Variable": "$.batch_date",
+                            "IsString": true
+                        }
+                    ],
+                    "Next": "Validate Input"
+                },
+                {
+                    "And": [
+                        {
+                            "Variable": "$.scheduled_time",
+                            "IsPresent": true
+                        },
+                        {
+                            "Variable": "$.scheduled_time",
+                            "IsString": true
+                        },
+                        {
+                            "Variable": "$.scheduler_execution_id",
+                            "IsPresent": true
+                        },
+                        {
+                            "Variable": "$.scheduler_execution_id",
+                            "IsString": true
+                        }
+                    ],
+                    "Next": "Derive Scheduled Batch Date"
+                }
+            ],
+            "Default": "Invalid Input"
+        },
+        "Derive Scheduled Batch Date": {
+            "Type": "Pass",
+            "Parameters": {
+                "batch_date.$": "States.ArrayGetItem(States.StringSplit($.scheduled_time, 'T'), 0)",
+                "trigger": "eventbridge-scheduler",
+                "scheduled_time.$": "$.scheduled_time",
+                "scheduler_execution_id.$": "$.scheduler_execution_id"
+            },
+            "Next": "Validate Input"
+        },
+        "Validate Input": {
+            "Type": "Choice",
+            "Choices": [
+                {
+                    "Variable": "$.batch_date",
+                    "IsPresent": true,
+                    "Next": "Bronze Validate"
+                }
+            ],
+            "Default": "Invalid Input"
+        },
+        "Invalid Input": {
+            "Type": "Fail",
+            "Error": "VNJobsInvalidInput",
+            "Cause": "Required input: batch_date in YYYY-MM-DD format"
+        },
+        "Bronze Validate": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::glue:startJobRun.sync",
+            "Parameters": {
+                "JobName": "vnjobs-bronze-validate-dev",
+                "Arguments": {
+                    "--BRONZE_BUCKET": "vnjobs-data-pipeline-bronze-ap-southeast-1-dev",
+                    "--BATCH_DATE.$": "$.batch_date"
+                }
+            },
+            "ResultPath": "$.bronze_job",
+            "TimeoutSeconds": 1200,
+            "Catch": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "ResultPath": "$.error",
+                    "Next": "Notify Failure"
+                }
+            ],
+            "Next": "Silver Transform"
+        },
+        "Silver Transform": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::glue:startJobRun.sync",
+            "Parameters": {
+                "JobName": "vnjobs-silver-transform-dev",
+                "Arguments": {
+                    "--BRONZE_BUCKET": "vnjobs-data-pipeline-bronze-ap-southeast-1-dev",
+                    "--SILVER_BUCKET": "vnjobs-data-pipeline-silver-ap-southeast-1-dev",
+                    "--BATCH_DATE.$": "$.batch_date"
+                }
+            },
+            "ResultPath": "$.silver_job",
+            "TimeoutSeconds": 1200,
+            "Catch": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "ResultPath": "$.error",
+                    "Next": "Notify Failure"
+                }
+            ],
+            "Next": "Gold Aggregate"
+        },
+        "Gold Aggregate": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::glue:startJobRun.sync",
+            "Parameters": {
+                "JobName": "vnjobs-gold-aggregate-dev",
+                "Arguments": {
+                    "--SILVER_BUCKET": "vnjobs-data-pipeline-silver-ap-southeast-1-dev",
+                    "--GOLD_BUCKET": "vnjobs-data-pipeline-gold-ap-southeast-1-dev",
+                    "--BATCH_DATE.$": "$.batch_date"
+                }
+            },
+            "ResultPath": "$.gold_job",
+            "TimeoutSeconds": 1200,
+            "Catch": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "ResultPath": "$.error",
+                    "Next": "Notify Failure"
+                }
+            ],
+            "Next": "Start Gold Crawler"
+        },
+        "Start Gold Crawler": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::aws-sdk:glue:startCrawler",
+            "Parameters": {
+                "Name": "vnjob-gold-crawler-dev"
+            },
+            "ResultPath": "$.crawler_start",
+            "Catch": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "ResultPath": "$.error",
+                    "Next": "Notify Failure"
+                }
+            ],
+            "Next": "Initialize Crawler Poll"
+        },
+        "Initialize Crawler Poll": {
+            "Type": "Pass",
+            "Result": {
+                "attempt": 0
+            },
+            "ResultPath": "$.crawler_poll",
+            "Next": "Wait For Gold Crawler"
+        },
+        "Wait For Gold Crawler": {
+            "Type": "Wait",
+            "Seconds": 15,
+            "Next": "Get Gold Crawler"
+        },
+        "Get Gold Crawler": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::aws-sdk:glue:getCrawler",
+            "Parameters": {
+                "Name": "vnjob-gold-crawler-dev"
+            },
+            "ResultPath": "$.crawler_status",
+            "Catch": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "ResultPath": "$.error",
+                    "Next": "Notify Failure"
+                }
+            ],
+            "Next": "Evaluate Gold Crawler"
+        },
+        "Evaluate Gold Crawler": {
+            "Type": "Choice",
+            "Choices": [
+                {
+                    "And": [
+                        {
+                            "Variable": "$.crawler_status.Crawler.State",
+                            "StringEquals": "READY"
+                        },
+                        {
+                            "Variable": "$.crawler_status.Crawler.LastCrawl.Status",
+                            "StringEquals": "SUCCEEDED"
+                        }
+                    ],
+                    "Next": "Notify Success"
+                },
+                {
+                    "Or": [
+                        {
+                            "Variable": "$.crawler_status.Crawler.State",
+                            "StringEquals": "RUNNING"
+                        },
+                        {
+                            "Variable": "$.crawler_status.Crawler.State",
+                            "StringEquals": "STOPPING"
+                        }
+                    ],
+                    "Next": "Check Crawler Poll Limit"
+                },
+                {
+                    "And": [
+                        {
+                            "Variable": "$.crawler_status.Crawler.State",
+                            "StringEquals": "READY"
+                        },
+                        {
+                            "Variable": "$.crawler_status.Crawler.LastCrawl.Status",
+                            "StringEquals": "FAILED"
+                        }
+                    ],
+                    "Next": "Crawler Failed"
+                },
+                {
+                    "And": [
+                        {
+                            "Variable": "$.crawler_status.Crawler.State",
+                            "StringEquals": "READY"
+                        },
+                        {
+                            "Variable": "$.crawler_status.Crawler.LastCrawl.Status",
+                            "StringEquals": "CANCELLED"
+                        }
+                    ],
+                    "Next": "Crawler Failed"
+                }
+            ],
+            "Default": "Check Crawler Poll Limit"
+        },
+        "Check Crawler Poll Limit": {
+            "Type": "Choice",
+            "Choices": [
+                {
+                    "Variable": "$.crawler_poll.attempt",
+                    "NumericGreaterThanEquals": 39,
+                    "Next": "Crawler Timed Out"
+                }
+            ],
+            "Default": "Increment Crawler Poll"
+        },
+        "Increment Crawler Poll": {
+            "Type": "Pass",
+            "Parameters": {
+                "attempt.$": "States.MathAdd($.crawler_poll.attempt, 1)"
+            },
+            "ResultPath": "$.crawler_poll",
+            "Next": "Wait For Gold Crawler"
+        },
+        "Crawler Failed": {
+            "Type": "Pass",
+            "Result": {
+                "Error": "VNJobsCrawlerFailed",
+                "Cause": "Gold crawler completed without SUCCEEDED status"
+            },
+            "ResultPath": "$.error",
+            "Next": "Notify Failure"
+        },
+        "Crawler Timed Out": {
+            "Type": "Pass",
+            "Result": {
+                "Error": "VNJobsCrawlerTimedOut",
+                "Cause": "Gold crawler did not finish within approximately 10 minutes"
+            },
+            "ResultPath": "$.error",
+            "Next": "Notify Failure"
+        },
+        "Notify Success": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::sns:publish",
+            "Parameters": {
+                "TopicArn": "arn:aws:sns:ap-southeast-1:490258149044:vnjobs-data-pipeline-alerts-dev",
+                "Subject": "[VNJobs Pipeline] SUCCEEDED",
+                "Message.$": "States.Format('VNJobs pipeline SUCCEEDED | execution={} | batch_date={} | execution_arn={}', $$.Execution.Name, $.batch_date, $$.Execution.Id)"
+            },
+            "ResultPath": "$.success_notification",
+            "Catch": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "ResultPath": "$.notification_error",
+                    "Next": "Notification Failed"
+                }
+            ],
+            "Next": "Pipeline Succeeded"
+        },
+        "Notify Failure": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::sns:publish",
+            "Parameters": {
+                "TopicArn": "arn:aws:sns:ap-southeast-1:490258149044:vnjobs-data-pipeline-alerts-dev",
+                "Subject": "[VNJobs Pipeline] FAILED",
+                "Message.$": "States.Format('VNJobs pipeline FAILED | execution={} | batch_date={} | error={} | execution_arn={}', $$.Execution.Name, $.batch_date, $.error.Error, $$.Execution.Id)"
+            },
+            "ResultPath": "$.failure_notification",
+            "Catch": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "ResultPath": "$.notification_error",
+                    "Next": "Pipeline Failed"
+                }
+            ],
+            "Next": "Pipeline Failed"
+        },
+        "Notification Failed": {
+            "Type": "Fail",
+            "Error": "VNJobsNotificationFailed",
+            "Cause": "Pipeline succeeded but the SNS success notification could not be published"
+        },
+        "Pipeline Failed": {
+            "Type": "Fail",
+            "Error": "VNJobsPipelineFailed",
+            "Cause": "A pipeline task failed; inspect the execution event details"
+        },
+        "Pipeline Succeeded": {
+            "Type": "Succeed"
+        }
+    }
+}

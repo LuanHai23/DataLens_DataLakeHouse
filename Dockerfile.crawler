@@ -1,0 +1,34 @@
+FROM python:3.11.16-slim-trixie
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PLAYWRIGHT_BROWSERS_PATH=/opt/playwright-browsers
+
+WORKDIR /app
+
+COPY requirements-crawler.txt /tmp/requirements-crawler.txt
+
+RUN python -m pip install --no-cache-dir -r /tmp/requirements-crawler.txt \
+    && python -m playwright install-deps chromium firefox \
+    && python -m playwright install chromium \
+    && rm -rf /var/lib/apt/lists/* /root/.cache/pip
+
+RUN useradd --create-home --uid 10001 crawler \
+    && mkdir -p /home/crawler/.cache /app \
+    && chown -R crawler:crawler /home/crawler /app /opt/playwright-browsers
+
+ENV HOME=/home/crawler
+
+RUN python -m camoufox fetch \
+    && python -m camoufox version \
+    && chown -R crawler:crawler /home/crawler/.cache
+
+USER crawler
+
+COPY --chown=crawler:crawler jobs/crawlers/ /app/jobs/crawlers/
+
+ENV PYTHONPATH=/app/jobs/crawlers
+
+ENTRYPOINT ["python", "-u"]
+CMD ["/app/jobs/crawlers/crawler_itviec.py"]

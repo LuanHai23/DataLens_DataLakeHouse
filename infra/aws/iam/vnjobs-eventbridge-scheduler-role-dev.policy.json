@@ -1,0 +1,11 @@
+{
+    "Version":  "2012-10-17",
+    "Statement":  [
+                      {
+                          "Sid":  "StartVNJobsStateMachine",
+                          "Effect":  "Allow",
+                          "Action":  "states:StartExecution",
+                          "Resource":  "arn:aws:states:ap-southeast-1:490258149044:stateMachine:vnjobs-data-pipeline-dev"
+                      }
+                  ]
+}

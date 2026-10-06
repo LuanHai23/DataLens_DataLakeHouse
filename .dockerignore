@@ -1,0 +1,7 @@
+**
+!Dockerfile.crawler
+!requirements-crawler.txt
+!jobs/
+!jobs/crawlers/
+jobs/crawlers/*
+!jobs/crawlers/*.py

@@ -8,7 +8,6 @@ hive/*.xml
 hive/*.jar
 *.json
 .env.*
-
 .pytest_cache/
 jobs/crawlers/json_cookies/
 *.cookies.json

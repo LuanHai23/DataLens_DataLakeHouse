@@ -13,7 +13,7 @@ MINIO_CONF = {
     "secret_key": os.getenv("MINIO_SECRET_KEY", "minio_password")
 }
 
-SOURCE_PATH  = "s3a://warehouse/bronze/jobs/"
+SOURCE_PATH  = "s3a://silver/jobs/"
 TARGET_TABLE = "demo.silver.jobs"
 
 def create_spark_session() -> SparkSession:
@@ -32,7 +32,7 @@ def create_spark_session() -> SparkSession:
         .config("spark.sql.catalog.demo.uri", "thrift://hive-metastore:9083")
         .config("spark.sql.catalog.demo","org.apache.iceberg.spark.SparkCatalog")
         .config("spark.sql.catalog.demo.type","hive")
-        .config("spark.sql.catalog.demo.warehouse", "s3a://warehouse/")
+        .config("spark.sql.catalog.demo.warehouse", "s3a://silver/")
         .config("spark.hadoop.fs.s3a.endpoint", MINIO_CONF["endpoint"])
         .config("spark.hadoop.fs.s3a.access.key", MINIO_CONF["access_key"])
         .config("spark.hadoop.fs.s3a.secret.key", MINIO_CONF["secret_key"])
@@ -123,10 +123,10 @@ def transform_data_silver():
     # STANDARDISE location
     df_final = df_final.withColumn(
         "location_std",
-        when(col("location_lower").rlike(r"ho chi minh|hcm|saigon"),  "Ho Chi Minh")
-        .when(col("location_lower").rlike(r"ha noi|hn\b|hanoi"),       "Ha Noi")
-        .when(col("location_lower").rlike(r"da nang|danang"),          "Da Nang")
-        .when(col("location_lower").contains("remote"),                "Remote")
+        when(col("location_lower").rlike(r"ho chi minh|hcm|saigon"), "Ho Chi Minh")
+        .when(col("location_lower").rlike(r"ha noi|hn\b|hanoi"), "Ha Noi")
+        .when(col("location_lower").rlike(r"da nang|danang"), "Da Nang")
+        .when(col("location_lower").contains("remote"), "Remote")
         .otherwise("Other")
     )
 

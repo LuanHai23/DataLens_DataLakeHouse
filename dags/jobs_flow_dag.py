@@ -106,6 +106,12 @@ with DAG(
         cmd_timeout=300,
     )
 
+    ingestion_bronze_done = SSHOperator(
+        task_id="bronze_ingestion_done",
+        ssh_conn_id=SSH_CONN_ID,
+        command="export PATH=/opt/bitnami/python/bin:/opt/bitnami/spark/bin:$PATH && export PLAYWRIGHT_BROWSERS_PATH=/opt/playwright-browsers && python /jobs/spark/ingestion_data_bronze.py",
+        cmd_timeout=300,
+    )
     bronze_done = EmptyOperator(task_id="bronze_done")
 
     validate_bronze = SSHOperator(
@@ -148,6 +154,6 @@ with DAG(
         trigger_rule="none_failed_min_one_success",
     )
 
-    start >> [bronze_itviec, bronze_topcv] >> bronze_done
+    start >> [bronze_itviec, bronze_topcv] >> ingestion_bronze_done >> bronze_done
     bronze_done >> validate_bronze >> silver_transform >> gold_aggregate
     gold_aggregate >> check_alerts >> [notify_discord, skip_notify] >> end
