@@ -1,641 +1,429 @@
 # 🚀 DataLens Data Lakehouse: Vietnam IT Job Market Analytics
 
-![Data Engineering](https://img.shields.io/badge/Data_Engineering-Fresher_Project-blue)
-![Apache Spark](https://img.shields.io/badge/Apache_Spark-3.5-E25A1C)
-![Apache Airflow](https://img.shields.io/badge/Apache_Airflow-2.7-017CEE)
-![Trino](https://img.shields.io/badge/Trino-Query_Engine-DD00A1)
-![Apache Iceberg](https://img.shields.io/badge/Apache_Iceberg-Table_Format-0081C9)
-![Metabase](https://img.shields.io/badge/Metabase-BI_Dashboard-509EE3)
-
----
+![Python](https://img.shields.io/badge/Python-Data_Engineering-3776AB)
+![Apache Spark](https://img.shields.io/badge/Apache_Spark-PySpark-E25A1C)
+![AWS](https://img.shields.io/badge/AWS-Cloud_Deployment-FF9900)
+![Ingestion](https://img.shields.io/badge/Ingestion-Hybrid-017CEE)
 
 ## 📌 Project Overview
 
-**DataLens** is an end-to-end **Data Engineering portfolio project** that builds a production-like data lakehouse for analyzing the **Vietnam IT labor market**.
+**DataLens** is a personal Data Engineering project that turns job listings from **ITviec** and **TopCV** into structured data for analyzing Vietnam's IT and data job market.
 
-The pipeline automatically collects IT job postings from platforms such as **ITviec** and **TopCV**, stores raw data in a data lake, validates data quality, cleans and standardizes job records, creates analytics-ready Gold marts, publishes dashboard-ready tables to PostgreSQL, and visualizes insights in Metabase.
+I first built the platform locally with Airflow, Spark, MinIO, Iceberg, Trino, PostgreSQL, and Metabase. I then implemented an AWS deployment using S3, AWS Glue, ECS Fargate, Step Functions, Glue Data Catalog, and Athena. Both implementations are retained in this repository.
 
-The project demonstrates a complete batch data platform including:
+The AWS version uses **hybrid ingestion**: ITviec is crawled on ECS Fargate, while TopCV job data is collected in a trusted local environment and uploaded through a validated utility. Once both inputs are ready, Step Functions runs the cloud processing workflow and publishes its result through SNS email notifications.
 
-* Web data ingestion
-* Batch ETL orchestration
-* Data cleaning and normalization
-* Medallion architecture
-* Apache Iceberg lakehouse tables
-* SQL analytics with Trino
-* PostgreSQL BI serving layer
-* Metabase dashboard
-* Discord high-salary job alerts
-* Data quality validation
-* Unit testing for transformation logic
+> **AWS deployment checkpoint:** batch processing, Gold catalog refresh, Athena queries, and SNS notifications have been verified. The daily EventBridge Scheduler configuration is provisioned but remains **DISABLED** because TopCV ingestion requires a manual input step.
+
+**Start here:** [Local setup](docs/local/README.md) · [AWS operation](#aws-operation) · [TopCV hybrid runbook](docs/aws/TOPCV_HYBRID_INGESTION.md) · [AWS workflow definition](infra/aws/stepfunctions/vnjobs-data-pipeline-dev.asl.json)
 
 ---
 
 ## 🎯 Business Problem
 
-Vietnam's IT job market data is scattered across multiple job platforms. Each platform has different formats for job titles, company names, locations, salary ranges, posted dates, and skill tags. This makes it difficult to analyze hiring demand, salary trends, popular technical skills, and high-salary opportunities in a consistent way.
+Job platforms publish titles, locations, company names, and salaries in different formats. A useful comparison needs consistent records and a clear record of when each batch was collected.
 
-**DataLens** solves this problem by turning messy job posting data into reliable analytics data products.
+DataLens prepares these records for questions such as:
 
-The project answers business questions such as:
+- How many listings were collected for a given batch?
+- How does job volume differ between sources and locations?
+- What proportion of listings disclose a salary?
+- What salary ranges are reported within each source, location, and currency?
+- Did the processing workflow finish and publish queryable outputs?
 
-* How many IT jobs are currently available?
-* Which companies are hiring the most?
-* Which technical skills are most in demand?
-* Which locations have the highest hiring activity?
-* How many jobs publish salary information?
-* Which jobs are high-salary opportunities?
-* Is the data pipeline running successfully and producing fresh data?
+The results describe the collected sample. They should not be interpreted as a complete census of Vietnam's job market.
+
+---
+
+## 🌍 Local and AWS Deployment Modes
+
+| Component | Local implementation | AWS implementation |
+| --- | --- | --- |
+| Ingestion | Python crawlers with user-managed browser sessions | ITviec on ECS Fargate; validated manual TopCV uploads |
+| Storage | MinIO | Separate S3 Bronze, Silver, and Gold buckets |
+| Processing | Spark jobs | AWS Glue PySpark jobs |
+| Orchestration | Apache Airflow | AWS Step Functions for processing and catalog refresh |
+| Scheduling | Airflow DAG configuration | EventBridge Scheduler, provisioned and **DISABLED** |
+| Analytical storage | Apache Iceberg tables | Partitioned Snappy Parquet files |
+| Catalog | Hive Metastore | AWS Glue Data Catalog |
+| SQL engine | Trino | Amazon Athena |
+| BI serving | PostgreSQL and Metabase | SQL analysis through Athena |
+| Notifications | Discord job alerts and reports | SNS email notifications for workflow success or failure |
+| Runtime support | Docker Compose | ECR, Secrets Manager, IAM, and CloudWatch |
+
+The local Iceberg tables, Metabase dashboards, and Discord alerts remain part of the local implementation. AWS marts use Parquet on S3 and have a separate SQL and notification path.
 
 ---
 
 ## 🏗️ Architecture
 
-![Data Lakehouse Architecture](./images/Architecture.png)
+### AWS hybrid deployment
 
-### Data Flow
+![DataLens AWS hybrid architecture](images/aws/VNJobs_AWS_Architecture.png)
 
-```text
-ITviec / TopCV
-      ↓
-Python Crawlers
-      ↓
-MinIO Bronze Layer
-      ↓
-Great Expectations Validation
-      ↓
-Spark Silver Transformation
-      ↓
-Spark Gold Aggregation
-      ↓
-Apache Iceberg Gold Tables on MinIO
-      ↓
-Trino Query Engine
-      ↓
-Discord Alerts
-```
+The diagram shows the processing, ingestion, metadata, and notification relationships. The ECS network configuration is described below.
 
-For dashboard serving:
+| Relationship | Purpose |
+| --- | --- |
+| ITviec → ECS Fargate → S3 Bronze raw | Cloud ingestion |
+| TopCV → local crawler → validated uploader → S3 Bronze raw | Hybrid ingestion |
+| ECR → ECS | Crawler container image |
+| Secrets Manager → ECS | Runtime cookie injection |
+| Bronze Validate → validated Bronze | Record validation before transformation |
+| Validated Bronze → Silver Transform → S3 Silver | Standardized job records |
+| S3 Silver → Gold Aggregate → S3 Gold | Three analytical marts |
+| Gold S3 → Glue Crawler → Glue Data Catalog | Schema and partition discovery |
+| Glue Data Catalog → Athena; Gold S3 → Athena | Metadata lookup and direct Parquet reads |
+| Step Functions → Glue jobs and Gold crawler | Processing orchestration |
+| Step Functions → SNS → Email | Success and failure notifications |
+| ECS, Glue jobs, and Step Functions → CloudWatch | Logs and execution evidence |
 
-```text
-Gold Analytics Marts
-      ↓
-PostgreSQL Serving Layer
-      ↓
-Metabase BI Dashboard
-```
+**Control boundary:** crawler tasks are launched separately. The current Step Functions definition begins with batch-date resolution and Bronze validation; it does not launch ECS ingestion.
+
+**Network boundary:** the tested Fargate configuration uses `awsvpc`, an existing VPC, configured subnets and a security group, with public-IP assignment enabled. Internet access also depends on the deployed subnet routing. The diagram does not imply that all AWS services run inside the ECS subnet.
+
+### Local deployment
+
+![DataLens local architecture](images/DataLens_Data_LakeHouse_Architecture.png)
+
+See the [local guide](docs/local/README.md) for Airflow, MinIO, Spark, Iceberg, Trino, PostgreSQL, Metabase, and Discord setup.
 
 ---
 
-## 🔁 Pipeline Design
+## 🔁 AWS Pipeline Design
 
 ### 1. Ingestion Layer
 
-Python crawlers collect job postings from:
+| Source | Execution path | Operational requirement |
+| --- | --- | --- |
+| ITviec | Containerized crawler on ECS Fargate | Valid cookies injected through Secrets Manager |
+| TopCV | Existing local crawler, followed by a reviewed JSON upload | Manual session maintenance and input preparation |
 
-| Source | Description                                        |
-| ------ | -------------------------------------------------- |
-| ITviec | Vietnam IT job postings                            |
-| TopCV  | Vietnam job postings with IT/data-related keywords |
+Crawler records include job title, URL, source, company, location, salary text, and other available fields. All stages must use the same explicit `batch_date`.
 
-The crawlers extract raw job data such as:
-
-* Job title
-* Company
-* Location
-* Salary
-* Tags / skills
-* Job URL
-* Posted date
-* Source name
-
-Raw data is uploaded to MinIO as the Bronze layer.
-
----
+The TopCV uploader checks JSON structure, rejects sensitive credential-related keys, generates a canonical payload checksum, verifies the target AWS account and S3 versioning, and records safe ingestion metadata. It does not read cookie files or print job records.
 
 ### 2. Bronze Layer
 
-The Bronze layer stores raw job posting data.
+Bronze keeps the original source JSON and the output of the deployed validation job in separate prefixes.
 
-Purpose:
+| Data | Path relative to the Bronze bucket |
+| --- | --- |
+| ITviec raw | `raw/source=itviec/batch_date=YYYY-MM-DD/itviec_jobs.json` |
+| TopCV raw | `raw/source=topcv/batch_date=YYYY-MM-DD/topcv_jobs.json` |
+| Validated records | `validated/jobs/source=<source>/batch_date=YYYY-MM-DD/` |
 
-* Preserve raw crawled data
-* Support replay and debugging
-* Keep source-level records before cleaning
-
-Example:
-
-```text
-s3a://data-lake/bronze/
-```
-
----
+The deployed Bronze validator is the quality gate before Silver processing. Its validation and quarantine behavior is separate from the uploader's file checks.
 
 ### 3. Silver Layer
 
-The Silver layer contains cleaned and standardized job records.
+[The Glue Silver job](jobs/aws/glue_silver_job.py) reads validated Parquet for one batch and checks that both expected sources are present.
 
-Main transformations:
+It trims required text fields, parses supported salary representations into minimum and maximum values, labels currency, maps locations to standard categories, and keeps one record per `(source, url)`. Optional missing fields are handled explicitly.
 
-* Flatten raw JSON structures
-* Standardize job titles
-* Normalize locations
-* Parse salary ranges
-* Detect currency
-* Deduplicate job URLs
-* Standardize source names
-* Prepare clean records for analytics
-
-Expected Silver table:
+Output path relative to the Silver bucket:
 
 ```text
-demo.silver.jobs
+jobs/source=<source>/batch_date=YYYY-MM-DD/
 ```
 
----
+Each source receives a deterministic batch prefix containing Parquet output. Salary parsing is heuristic, so unusual formats require additional parsing rules and tests.
 
 ### 4. Gold Layer
 
-The Gold layer contains business-ready analytics marts stored as Apache Iceberg tables.
+[The Glue Gold job](jobs/aws/glue_gold_job.py) reads one Silver batch, checks its required columns and sources, and publishes exactly three analytical marts.
 
-Expected Gold tables:
-
-```text
-demo.gold.mart_job_market_overview
-demo.gold.mart_source_performance
-demo.gold.mart_salary_by_location
-demo.gold.mart_company_hiring_trend
-demo.gold.mart_skill_demand
-demo.gold.mart_high_salary_alerts
-demo.gold.mart_pipeline_health
-```
-
-Backward-compatible legacy tables are also maintained for older dashboard or Discord logic:
-
-```text
-demo.gold.itviec_jobs
-demo.gold.market_summary
-demo.gold.source_stats
-demo.gold.daily_alerts
-```
+Each mart is written to a deterministic date prefix. The job checks for empty outputs and verifies that the overview's distinct job count matches the Silver input count.
 
 ---
 
-## 🧱 Data Products
+## 🧱 AWS Data Products
 
-| Data Product                | Purpose                                                                                |
-| --------------------------- | -------------------------------------------------------------------------------------- |
-| `mart_job_market_overview`  | Executive KPIs such as total jobs, companies, sources, locations, and jobs with salary |
-| `mart_source_performance`   | Tracks job volume and salary availability by source                                    |
-| `mart_salary_by_location`   | Analyzes salary distribution by location, source, and currency                         |
-| `mart_company_hiring_trend` | Identifies top hiring companies                                                        |
-| `mart_skill_demand`         | Aggregates in-demand skills from job titles and tags                                   |
-| `mart_high_salary_alerts`   | Provides high-salary job opportunities                                                 |
-| `mart_pipeline_health`      | Tracks pipeline status, input records, run date, and processing timestamp              |
+| Mart | Grain | Main metrics |
+| --- | --- | --- |
+| `job_market_overview` | Report date | Total jobs, companies, sources, locations, and jobs with salary |
+| `source_performance` | Source and report date | Job count, company count, and jobs with salary |
+| `location_summary` | Location, source, currency, and report date | Job count, salary availability, average minimum/maximum salary, and highest salary |
 
----
-
-## 🗄️ PostgreSQL Serving Layer
-
-Although Apache Iceberg is the main lakehouse table format, Metabase consumes dashboard-ready data from PostgreSQL for simpler and faster BI access.
-
-Gold marts are published to PostgreSQL under the `analytics` schema:
+Gold prefixes are:
 
 ```text
-analytics.mart_job_market_overview
-analytics.mart_source_performance
-analytics.mart_salary_by_location
-analytics.mart_company_hiring_trend
-analytics.mart_skill_demand
-analytics.mart_high_salary_alerts
-analytics.mart_pipeline_health
+marts/job_market_overview/batch_date=YYYY-MM-DD/
+marts/source_performance/batch_date=YYYY-MM-DD/
+marts/location_summary/batch_date=YYYY-MM-DD/
 ```
 
-This design separates:
-
-| Component      | Role                          |
-| -------------- | ----------------------------- |
-| Apache Iceberg | Lakehouse source of truth     |
-| Trino          | SQL query engine over Iceberg |
-| PostgreSQL     | BI serving layer              |
-| Metabase       | Dashboard visualization       |
+The location mart groups currencies separately. Its aggregates do not perform exchange-rate conversion.
 
 ---
 
-## 📊 Dashboard Output
+## 🗄️ Athena Query Layer
 
-The Metabase dashboard provides a business-facing view of Vietnam IT job market analytics.
+The Gold crawler registers schemas and partitions in Glue Data Catalog. Athena uses that metadata to query the Gold Parquet files directly from S3.
 
-![Metabase Dashboard](./images/Metabase_dashboard.png)
+Select the database and table names created by the deployed crawler. For example, after replacing both quoted identifiers with the actual catalog names:
 
-### Current Sample Run
-
-Latest successful pipeline output:
-
-```text
-Total job postings: 368
-Hiring companies: 239
-Data sources: 2
-Locations: 4
-Jobs with salary: 117
-PostgreSQL serving tables: 7
+```sql
+SELECT report_date, total_jobs, total_companies, jobs_with_salary
+FROM "YOUR_GLUE_DATABASE"."YOUR_OVERVIEW_TABLE"
+WHERE batch_date = '2026-09-30';
 ```
 
-### Dashboard Metrics
-
-| Metric / Chart         | Insight                                             |
-| ---------------------- | --------------------------------------------------- |
-| Total Job Postings     | Shows the size of the collected IT job market data  |
-| Hiring Companies       | Measures how many companies are actively recruiting |
-| Jobs With Salary       | Tracks salary transparency in job postings          |
-| Job Count by Source    | Compares data contribution from ITviec and TopCV    |
-| Top In-Demand Skills   | Identifies skills most requested by employers       |
-| Salary by Location     | Compares salary opportunities across locations      |
-| Top Hiring Companies   | Shows companies with the highest hiring activity    |
-| High-Salary Job Alerts | Lists jobs that satisfy high-salary thresholds      |
-| Pipeline Health        | Monitors whether the Gold pipeline ran successfully |
+Configure the Athena workgroup's query-result storage separately. Its output location is not the Gold mart source location. If the workgroup uses a customer-owned S3 result location, include that bucket or prefix in the deployment configuration.
 
 ---
 
-## 🤖 Discord Bot Alerts
+## 📣 SNS Email Notifications and CloudWatch
 
-The Discord bot sends high-salary job alerts and daily market reports.
+Step Functions publishes workflow outcomes to the SNS topic `vnjobs-data-pipeline-alerts-dev`. A confirmed email subscription receives execution identifiers and the batch date; failure notifications also include an error identifier.
 
-![Discord Bot](./images/Discordbot.png)
+The workflow reports processing success after the Gold crawler completes successfully. Notifications describe pipeline execution status rather than local Discord high-salary alerts.
 
-![Discord Bot 2](./images/Discordbot2.png)
-
-High-salary alert rules:
-
-```text
-USD salary: min_salary >= 1000
-VND salary: min_salary >= 20,000,000
-```
-
-The alerting layer uses curated Gold data, making it more reliable than directly alerting from raw crawler output.
+CloudWatch supports investigation of crawler runtime, Glue processing, and workflow execution. The crawler log group is `/ecs/vnjobs-crawler-dev`.
 
 ---
 
-## ✅ Data Quality
+## ✅ Data Quality and Security
 
-Great Expectations is used as the data quality validation component.
+- The manual uploader accepts a non-empty JSON array of objects and rejects credential-related keys.
+- Silver requires non-empty validated input, mandatory columns, and both expected sources.
+- Silver removes blank titles/URLs and deduplicates by source and URL.
+- Gold requires non-empty inputs and marts, and reconciles its total with Silver input.
+- Bronze, Silver, and Gold buckets have public-access blocking, AES256 encryption, and versioning enabled in the tested deployment.
+- ECS receives session cookies through Secrets Manager; its execution role has scoped secret-read permission, while its task role supplies application access to S3.
+- The crawler image is built for Linux AMD64 and runs as a non-root user. Cookie JSON files are excluded from the image.
 
-Validation focuses on:
-
-* Required fields such as `url`, `title`, and `source`
-* Valid source values such as `itviec` and `topcv`
-* Duplicate job URL detection
-* Salary field validity
-* Salary range consistency
-* Non-empty pipeline outputs
-
-Example quality rules:
-
-```text
-url must not be null
-title must not be null
-source must be in [itviec, topcv]
-url should be unique
-min_salary <= max_salary
-Gold marts should not be empty
-```
-
-More details:
-
-* [Data Quality Rules](docs/data_quality_rules.md)
+AWS keys, `.env` files, browser cookies, and account passwords are kept outside version control. Browser session renewal remains a manual operational task.
 
 ---
 
-## 🧪 Testing
+## 🧪 Testing and Verified Outputs
 
-This project includes unit tests for core normalization logic used in the Silver layer.
-
-Test coverage includes:
-
-* Salary parsing
-* Location normalization
-* Job title normalization
-
-Run tests:
+Run the repository tests in a Python environment with the project dependencies and pytest installed:
 
 ```bash
-pytest tests
+python -m pytest tests -q -p no:cacheprovider
 ```
 
-Example test result:
+The AWS branch includes tests for crawler storage selection, cookie loading, TopCV page classification, manual upload behavior, Silver/Gold job contracts, and the Scheduler/IAM configuration. Normalization tests also remain in the repository.
 
-```text
-................. [100%]
-```
+Unit and contract tests complement the runtime checks performed on AWS:
 
-This means all 17 normalization tests passed.
+| Checkpoint | Verified evidence |
+| --- | --- |
+| ITviec ECS canary | Cookies loaded from environment, container exit code `0`, fresh versioned raw S3 output |
+| TopCV ECS canary | Cookies injected and Camoufox started; Cloudflare blocked access and no raw output was published |
+| Hybrid TopCV upload | A 50-record batch for `2026-09-30`, versioned object metadata, and matching readback checksum |
+| Silver reference batch | `2026-09-27`: 48 ITviec records + 50 TopCV records; 98 input and 98 output records |
+| Gold and query path | Three mart prefixes, Glue catalog refresh, and successful Athena queries |
+| Notification paths | Successful processing notifications and controlled failure notifications |
+| Scheduler canary | Real invocation, context-token substitution, expected missing-data failure, and SNS notification |
+
+These are development checkpoint results. Local dashboard sample counts and cloud batch counts refer to different runs.
 
 ---
 
-## 🔁 Backfill and Retry Strategy
+## 🔁 Backfill, Reruns, and Scheduling
 
-The pipeline is orchestrated by Apache Airflow and designed to support retryable batch processing.
+Manual workflow input accepts a specific processing date:
 
-Production-like strategies include:
+```json
+{
+  "batch_date": "2026-09-30"
+}
+```
 
-* Airflow task retries
-* Source-level crawler isolation
-* Idempotent Gold writes using Iceberg `MERGE INTO`
-* PostgreSQL serving table refresh
-* Pipeline health tracking
-* Backfill-ready partitioning by run date
+Use the date corresponding to the prepared source files, including for backfills. Silver and Gold replace only the relevant source/mart batch prefixes before writing their output, which avoids accumulating duplicate current files on a successful rerun.
 
-More details:
+This prefix replacement is not an atomic transaction across the complete batch. Run only one writer for a batch at a time and inspect outputs after interrupted runs. S3 versioning supports object-level recovery.
 
-* [Backfill and Retry Strategy](docs/backfill_retry_strategy.md)
+The state machine catches processing failures and routes them to SNS. Its current Glue states do not define automatic `Retry` blocks. The Scheduler target's invocation retry policy is separate from processing retries.
+
+The versioned daily schedule uses:
+
+| Setting | Value |
+| --- | --- |
+| Expression | `cron(0 8 * * ? *)` |
+| Time zone | `Asia/Ho_Chi_Minh` |
+| Flexible time window | `OFF` |
+| State | **`DISABLED`** |
+
+The Scheduler contract has been tested, but the daily schedule is kept disabled while TopCV requires manual raw input. Literal Scheduler context tokens are preserved in the versioned target input.
 
 ---
 
-## 🛠️ Tech Stack
+## 🛠️ AWS Tech Stack
 
-| Category         | Technology                                       |
-| ---------------- | ------------------------------------------------ |
-| Language         | Python, SQL                                      |
-| Web Ingestion    | Python Crawlers, Playwright / browser automation |
-| Processing       | Apache Spark, PySpark                            |
-| Orchestration    | Apache Airflow                                   |
-| Data Quality     | Great Expectations                               |
-| Object Storage   | MinIO                                            |
-| Table Format     | Apache Iceberg                                   |
-| Metadata Catalog | Hive Metastore                                   |
-| Metadata Backend | PostgreSQL                                       |
-| Query Engine     | Trino                                            |
-| BI Serving Layer | PostgreSQL                                       |
-| BI Dashboard     | Metabase                                         |
-| Alerting         | Discord Bot                                      |
-| Infrastructure   | Docker, Docker Compose                           |
-| Testing          | Pytest                                           |
+| Category | Technology |
+| --- | --- |
+| Language and processing | Python, SQL, PySpark, AWS Glue |
+| Browser ingestion | Camoufox, Playwright |
+| Containers | Docker, Amazon ECR, Amazon ECS on AWS Fargate |
+| Networking | Amazon VPC, configured subnets, task security group |
+| Storage | Amazon S3, JSON, partitioned Snappy Parquet |
+| Orchestration | AWS Step Functions |
+| Scheduling | Amazon EventBridge Scheduler — provisioned, disabled |
+| Metadata | AWS Glue Crawler and Glue Data Catalog |
+| SQL analytics | Amazon Athena |
+| Session secrets and permissions | AWS Secrets Manager, AWS IAM |
+| Logs | Amazon CloudWatch |
+| Workflow notifications | Amazon SNS with email subscription |
+| Testing | pytest |
 
 ---
 
 ## 📂 Project Structure
 
-```text
-VNJobs_API_DataLakeHouse/
-├── dags/                         # Airflow DAGs
-├── jobs/
-│   ├── crawlers/                 # ITviec and TopCV crawlers
-│   ├── spark/                    # Spark Bronze/Silver/Gold jobs
-│   │   └── utils/                # Normalization utilities
-│   ├── notifications/            # Discord bot / alerting logic
-│   └── trino/                    # Trino catalog config
-├── docs/
-│   ├── data_contract_job_listing.md
-│   ├── salary_parsing.md
-│   ├── data_quality_rules.md
-│   └── backfill_retry_strategy.md
-├── tests/                        # Unit tests
-├── images/                       # Architecture and dashboard screenshots
-├── docker-compose.yml
-└── README.md
-```
+| Path | Responsibility |
+| --- | --- |
+| `dags/` | Local Airflow orchestration |
+| `jobs/crawlers/` | Crawlers, storage backend, cookies, and page classification |
+| `jobs/spark/` | Local processing jobs |
+| `jobs/aws/glue_silver_job.py` | Cloud Silver transformation |
+| `jobs/aws/glue_gold_job.py` | Cloud Gold aggregation |
+| `jobs/notifications/` | Local Discord implementation |
+| `jobs/trino/` | Local query-engine configuration |
+| `infra/aws/stepfunctions/` | Versioned state machine definition |
+| `infra/aws/scheduler/` | Disabled daily schedule manifest |
+| `infra/aws/iam/` | Versioned Scheduler role contracts |
+| `scripts/aws/upload_topcv_raw.py` | Validated manual TopCV uploader |
+| `docs/local/README.md` | Local deployment guide |
+| `docs/aws/TOPCV_HYBRID_INGESTION.md` | Cloud TopCV operation runbook |
+| `tests/` | Normalization and AWS contract tests |
+| `images/` | Architecture and local dashboard screenshots |
+| `Dockerfile.crawler` | ECS crawler image |
+| `docker-compose.yml` | Local service deployment |
+
+The deployed Bronze Glue script is currently hosted in the deployment's Glue-assets S3 location. The AWS branch versions the Silver and Gold scripts; exporting and versioning the deployed Bronze script remains a reproducibility improvement.
 
 ---
 
 ## 🚀 How to Run Locally
 
-### 1. Prerequisites
+The local deployment is retained. Follow the [local setup guide](docs/local/README.md) for environment variables, Docker Compose services, the `spark_ssh` Airflow connection, crawler sessions, and dashboard verification.
 
-Make sure you have:
-
-* Docker
-* Docker Compose
-* At least 8GB RAM allocated to Docker
+Local processing uses Airflow and MinIO. AWS processing uses the S3 batch contract and Step Functions. Choose the intended storage backend before running a crawler.
 
 ---
 
-### 2. Environment Variables
+<a id="aws-operation"></a>
 
-Create a `.env` file in the root directory.
+## ☁️ How to Run on AWS
 
-Example:
+The tested deployment is in **`ap-southeast-1`**. This is a setup and operation guide for the documented development environment, not a one-command infrastructure installer.
 
-```env
-# Discord
-DISCORD_TOKEN=your_discord_bot_token
-DISCORD_WEBHOOK_URL=your_discord_webhook_url
+### 1. Prepare the environment
 
-# PostgreSQL
-POSTGRES_USER=admin
-POSTGRES_PASSWORD=adminpassword
+Create or reuse private, encrypted, versioned Bronze/Silver/Gold S3 buckets; an ECR repository; an ECS Fargate task definition; service roles; and a CloudWatch log group. Configure the task's VPC, subnets, security group, and internet routing.
 
-# MinIO
-MINIO_ROOT_USER=minio_admin
-MINIO_ROOT_PASSWORD=minio_password
+Use Secrets Manager references for cookie injection. Configure the execution role for image retrieval, logging, and secret access, and the task role for application S3 access.
 
-# Metabase PostgreSQL connection
-MB_DB_TYPE=postgres
-MB_DB_DBNAME=warehouse_db
-MB_DB_PORT=5432
-MB_DB_USER=admin
-MB_DB_PASS=adminpassword
-MB_DB_HOST=postgres
+Resource names, account-specific ARNs, bucket names, and the uploader's account guard must be adapted before deploying to another AWS account.
+
+### 2. Configure the processing workflow
+
+| Resource | Reference name |
+| --- | --- |
+| Bronze Glue job | `vnjobs-bronze-validate-dev` |
+| Silver Glue job | `vnjobs-silver-transform-dev` |
+| Gold Glue job | `vnjobs-gold-aggregate-dev` |
+| Gold crawler | `vnjob-gold-crawler-dev` |
+| State machine | `vnjobs-data-pipeline-dev` |
+| Daily schedule | `vnjobs-data-pipeline-daily-dev` |
+
+Upload the Glue scripts to the selected S3 script locations and configure their arguments to match the workflow. Configure the crawler to scan the Gold marts, an Athena workgroup, and a confirmed SNS email subscription. Deploy the [state machine definition](infra/aws/stepfunctions/vnjobs-data-pipeline-dev.asl.json).
+
+### 3. Prepare both raw sources
+
+Run an ITviec ECS task with `/app/jobs/crawlers/crawler_itviec.py` as its command and set `BATCH_DATE` explicitly. The S3 ingestion configuration uses `STORAGE_BACKEND=s3`, `S3_BUCKET`, `S3_RAW_PREFIX`, and `AWS_REGION`.
+
+Generate TopCV job JSON using the existing local workflow. Validate the exported file first:
+
+```powershell
+python scripts/aws/upload_topcv_raw.py `
+  --input "C:\path\to\topcv_jobs.json" `
+  --batch-date "2026-09-30" `
+  --dry-run
 ```
 
-Do not commit `.env` to GitHub.
+Replace the example file path and date with the actual input. After a successful dry-run, follow the [hybrid runbook](docs/aws/TOPCV_HYBRID_INGESTION.md) to perform the controlled upload. That runbook documents identical-payload handling and reviewed corrections.
+
+Before starting processing, confirm that both raw JSON objects exist for the same batch date. A file in an older date prefix does not satisfy this input contract.
+
+### 4. Execute and verify
+
+In the Step Functions console, start an execution with the explicit `batch_date` JSON shown above. Check the Glue runs, catalog refresh, terminal execution status, and SNS email.
+
+Confirm validated Bronze and Silver Parquet for both sources, all three Gold mart prefixes, and the expected batch partition in Athena. Keep the daily Scheduler **DISABLED** while the manual TopCV input step exists.
 
 ---
 
-### 3. Start Services
+## 📸 Screenshots and Documentation
 
-```bash
-docker compose up -d
-```
+- [AWS architecture](images/aws/VNJobs_AWS_Architecture.png)
+- [Local architecture](images/DataLens_Data_LakeHouse_Architecture.png)
+- [Local Airflow DAG](images/dags_of_jobs.png)
+- [Local Metabase dashboard](images/Dashboard_1.png)
+- [Local jobs dashboard](images/dashboard_2.png)
+- [TopCV hybrid ingestion runbook](docs/aws/TOPCV_HYBRID_INGESTION.md)
+- [Job listing data contract](docs/data_contract_job_listing.md)
+- [Local salary parsing](docs/salary_parsing.md)
+- [Local data quality rules](docs/data_quality_rules.md)
+- [Local backfill and retry strategy](docs/backfill_retry_strategy.md)
 
-Main UIs:
-
-| Service       | URL                   |
-| ------------- | --------------------- |
-| Airflow       | http://localhost:8081 |
-| MinIO Console | http://localhost:9001 |
-| Spark Master  | http://localhost:8080 |
-| Trino         | http://localhost:8082 |
-| Metabase      | http://localhost:3000 |
-
----
-
-### 4. Trigger Pipeline
-
-Open Airflow:
-
-```text
-http://localhost:8081
-```
-
-Enable and trigger:
-
-```text
-job_hunter_pipeline
-```
-
-Pipeline stages:
-
-```text
-crawl_itviec
-crawl_topcv
-bronze_validation
-silver_transform
-gold_aggregate
-discord_alert
-```
-
----
-
-### 5. Validate Gold Tables in Trino
-
-Enter Trino CLI:
-
-```bash
-docker exec -it trino-coordinator trino
-```
-
-Check Gold tables:
-
-```sql
-SHOW TABLES FROM demo.gold;
-```
-
-Query example:
-
-```sql
-SELECT *
-FROM demo.gold.mart_job_market_overview
-LIMIT 10;
-```
-
----
-
-### 6. Validate PostgreSQL Serving Tables
-
-Check serving tables:
-
-```bash
-docker exec -it postgres_jobs psql -U admin -d warehouse_db -c "\dt analytics.*"
-```
-
-Query example:
-
-```bash
-docker exec -it postgres_jobs psql -U admin -d warehouse_db -c "SELECT * FROM analytics.mart_job_market_overview LIMIT 5;"
-```
-
----
-
-### 7. View Metabase Dashboard
-
-Open Metabase:
-
-```text
-http://localhost:3000
-```
-
-Connect to PostgreSQL:
-
-```text
-Host: postgres
-Port: 5432
-Database: warehouse_db
-Schema: analytics
-Username: admin
-Password: adminpassword
-```
-
-Then open the dashboard:
-
-```text
-Vietnam IT Job Market Analytics
-```
-
----
-
-## 📸 Screenshots
-
-### Airflow DAG
-
-![Airflow DAG](./images/dags_of_jobs.png)
-
-### Metabase Dashboard
-
-![Metabase Dashboard](./images/Metabase_dashboard.png)
-
-### ITviec Jobs Dashboard
-
-![ITviec Jobs](./images/Metabase_job_itviec.png)
-
-### Additional Dashboard View
-
-![Metabase](./images/Metabase.png)
-
----
-
-## 📚 Documentation
-
-* [Job Listing Data Contract](docs/data_contract_job_listing.md)
-* [Salary Parsing Logic](docs/salary_parsing.md)
-* [Data Quality Rules](docs/data_quality_rules.md)
-* [Backfill and Retry Strategy](docs/backfill_retry_strategy.md)
+The local documentation describes local behavior. AWS job behavior is defined by the cloud scripts and workflow linked above.
 
 ---
 
 ## 🧠 What This Project Demonstrates
 
-This project demonstrates practical Data Engineering skills for a Fresher / Junior Data Engineer role:
+| Skill | Evidence |
+| --- | --- |
+| Cloud migration | Local batch-processing concepts implemented with AWS managed services |
+| Batch ETL | Date-scoped Bronze validation, Silver transformation, and Gold aggregation |
+| Data modeling | Three cloud marts with explicit grains and partition paths |
+| Runtime security | Non-root crawler image and Secrets Manager cookie delivery |
+| Orchestration | Glue execution, bounded crawler polling, and notification branches |
+| SQL analytics | Glue catalog metadata and Athena queries over S3 Parquet |
+| Testing | Logic tests, AWS contract tests, and controlled runtime canaries |
+| Operational decisions | Explicit hybrid ingestion boundary and disabled daily schedule |
 
-| Skill                  | Evidence in Project                                 |
-| ---------------------- | --------------------------------------------------- |
-| Batch ETL              | Airflow orchestrates scheduled Spark jobs           |
-| Web Data Ingestion     | Python crawlers collect IT job data                 |
-| Data Cleaning          | Salary, location, title, and source normalization   |
-| Lakehouse Architecture | Bronze, Silver, Gold layers on MinIO                |
-| Lakehouse Table Format | Apache Iceberg Gold tables                          |
-| SQL Analytics          | Trino queries Iceberg tables                        |
-| BI Dashboard           | Metabase dashboard over PostgreSQL serving marts    |
-| Data Quality           | Great Expectations validation rules                 |
-| Testing                | Pytest tests for normalization logic                |
-| Alerting               | Discord high-salary job alerts                      |
-| Production Thinking    | Retry strategy, serving layer, pipeline health mart |
+This project supports my preparation for **Data Engineer Intern / Fresher** opportunities.
 
 ---
 
 ## 🔮 Future Improvements
 
-Potential improvements:
-
-* Add more job sources such as VietnamWorks, LinkedIn, or CareerViet
-* Add source-level freshness monitoring
-* Add `mart_data_quality_summary`
-* Add CI pipeline with GitHub Actions
-* Add dbt models for serving-layer transformations
-* Add cloud deployment plan for AWS / Azure / GCP
-* Add historical backfill by Airflow execution date
-* Add more robust salary parsing for annual salary, gross/net salary, and benefits
+- Version the deployed Bronze script, ECS task definition, and remaining deployment configuration.
+- Add infrastructure provisioning and CI checks for repeatable deployments.
+- Add source freshness checks before workflow execution and strengthen batch concurrency controls.
+- Improve salary parsing for unusual formats and multi-location listings.
+- Add retention policies for logs and noncurrent S3 object versions.
+- Evaluate an approved source integration for unattended TopCV ingestion before enabling daily scheduling.
+- Extend cloud analytics and add a BI interface when there is a concrete reporting need.
 
 ---
 
-## ⚠️ Disclaimer
+## ⚠️ Scope and Disclaimer
 
-This project is for educational and portfolio purposes only. It is intended to demonstrate data engineering skills and system design practices. When collecting web data, always respect the target website's terms of service, robots.txt, and rate limits.
+DataLens is an educational portfolio project tested with development batches. The AWS implementation uses Parquet-based analytics; transactional Iceberg behavior belongs to the local implementation.
+
+TopCV AWS access was blocked even after successful cookie injection and browser startup. That evidence does not establish one exact Cloudflare blocking rule. The chosen operation path is local collection followed by a validated upload; account login and cookie renewal are manual.
+
+Collect data only within the source's access permissions, terms, and rate limits. Store job payloads separately from authentication material.
 
 ---
 
 ## 🤝 Let's Connect
 
-This project is a milestone in my journey toward becoming a **Data Engineer**. Building this end-to-end lakehouse helped me strengthen my skills in distributed processing, orchestration, data quality, lakehouse architecture, and BI analytics.
+Building DataLens helped me move from analyzing datasets toward designing the systems that prepare them. The local implementation taught me processing, catalog, and BI integration; the AWS deployment added practical experience with IAM, containers, managed ETL, and workflow operations.
 
-I am currently open to **Fresher Data Engineer** and **Data Engineer Intern** opportunities.
-
-* 💼 **LinkedIn:** https://www.linkedin.com/in/h%E1%BA%A3i-lu%C3%A2n-nguy%E1%BB%85n-ng%E1%BB%8Dc-67098531a/
-* 📧 **Email:** [nguyenngochailuan16112003@gmail.com](mailto:nguyenngochailuan16112003@gmail.com)
+- 💼 [Nguyen Ngoc Hai Luan — LinkedIn](https://www.linkedin.com/in/nguyen-ngoc-hai-luan-67098531a/)
+- 📧 [nguyenngochailuan16112003@gmail.com](mailto:nguyenngochailuan16112003@gmail.com)
+- 💻 [Original local project](https://github.com/LuanHai23/DataLens_DataLakeHouse/tree/main)
 
 ---
 
 ## 🌟 Explore More
 
-Other Data Engineering projects:
-
-* ⚡ **Binance API Data Lakehouse** — Real-time crypto market data pipeline with Kafka, Spark Structured Streaming, MinIO, PostgreSQL, dbt, and Metabase.
+**Binance API Data Lakehouse** — my other Data Engineering project, covering real-time market-data ingestion and stream processing.
