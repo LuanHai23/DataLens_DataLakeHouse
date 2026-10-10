@@ -418,7 +418,6 @@ Collect data only within the source's access permissions, terms, and rate limits
 
 Building DataLens helped me move from analyzing datasets toward designing the systems that prepare them. The local implementation taught me processing, catalog, and BI integration; the AWS deployment added practical experience with IAM, containers, managed ETL, and workflow operations.
 
-- 💼 [Nguyen Ngoc Hai Luan — LinkedIn](https://www.linkedin.com/in/nguyen-ngoc-hai-luan-67098531a/)
 - 📧 [nguyenngochailuan16112003@gmail.com](mailto:nguyenngochailuan16112003@gmail.com)
 - 💻 [Original local project](https://github.com/LuanHai23/DataLens_DataLakeHouse/tree/main)
 
